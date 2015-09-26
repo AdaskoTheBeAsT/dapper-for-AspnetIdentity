@@ -11,7 +11,7 @@
     <AssemblyName>Lu.Dapper.Extensions</AssemblyName>
     <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\..\..\..\chainlab\ShortSeaSolution\NewSchedule\NewSchedule\</SolutionDir>
+    <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
     <RestorePackages>true</RestorePackages>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
@@ -31,10 +31,13 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Dapper, Version=1.37.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\SampleSite\packages\Dapper.1.37\lib\net45\Dapper.dll</HintPath>
+    <Reference Include="Dapper">
+      <HintPath>..\packages\Dapper.1.42\lib\net45\Dapper.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -45,10 +48,24 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="IRepository.cs" />
+    <Compile Include="AutoIncrementAttribute.cs" />
+    <Compile Include="ComputedAttribute.cs" />
+    <Compile Include="DapperRepository[T,TKey].cs" />
+    <Compile Include="DapperRepository[T].cs" />
+    <Compile Include="IRepository[T,TKey].cs" />
+    <Compile Include="IRepository[T].cs" />
+    <Compile Include="ISqlAdapter.cs" />
+    <Compile Include="KeyAttribute.cs" />
+    <Compile Include="LinqToSqlResult.cs" />
     <Compile Include="LuMapperExtensions.cs" />
+    <Compile Include="PostgresAdapter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="QueryParameter.cs" />
+    <Compile Include="SQLiteAdapter.cs" />
     <Compile Include="SqlMapperExtensions.cs" />
+    <Compile Include="SqlServerAdapter.cs" />
+    <Compile Include="TableAttribute.cs" />
+    <Compile Include="WriteAttribute.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

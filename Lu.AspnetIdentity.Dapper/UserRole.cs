@@ -1,20 +1,18 @@
-﻿using Lu.Dapper.Extensions.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Lu.AspnetIdentity.Dapper
+﻿namespace Lu.AspnetIdentity.Dapper
 {
-    public partial class IdentityUserRole<TKey,TRoleKey>
+    using System;
+
+    public partial class IdentityUserRole<TKey, TRoleKey>
     {
         public IdentityUserRole()
         {
             Id = Guid.NewGuid().ToString();
         }
+
         public string Id { get; set; }
+
         public TKey UserId { get; set; }
+
         public TRoleKey RoleId { get; set; }
     }
 }

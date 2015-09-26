@@ -1,116 +1,52 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Diagnostics;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Collections.Concurrent;
-using System.Reflection.Emit;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Runtime.CompilerServices;
-using Dapper;
-
-#pragma warning disable 1573, 1591 // xml comments
-
-namespace Lu.Dapper.Extensions.Utils
+﻿namespace Lu.Dapper.Extensions.Utils
 {
+    using System;
+    using System.Collections.Concurrent;
+    using System.Collections.Generic;
+    using System.Data;
+    using System.Linq;
+    using System.Reflection;
+    using System.Reflection.Emit;
+    using System.Text;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    using global::Dapper;
 
     public static partial class SqlMapperExtensions
     {
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> KeyProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> TypeProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ComputedProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> AutoIncrementProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>(); 
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> GetQueries = new ConcurrentDictionary<RuntimeTypeHandle, string>();
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> TypeTableName = new ConcurrentDictionary<RuntimeTypeHandle, string>();
+        private static readonly Dictionary<string, ISqlAdapter> AdapterDictionary =
+            new Dictionary<string, ISqlAdapter>()
+                {
+                    { "sqlconnection", new SqlServerAdapter() },
+                    { "npgsqlconnection", new PostgresAdapter() },
+                    { "sqliteconnection", new SQLiteAdapter() }
+                };
+
         public interface IProxy
         {
             bool IsDirty { get; set; }
         }
 
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> KeyProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> TypeProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
-		private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ComputedProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> AutoIncrementProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>(); 
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> GetQueries = new ConcurrentDictionary<RuntimeTypeHandle, string>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> TypeTableName = new ConcurrentDictionary<RuntimeTypeHandle, string>();
-
-		private static readonly Dictionary<string, ISqlAdapter> AdapterDictionary = new Dictionary<string, ISqlAdapter>() {
-																							{"sqlconnection", new SqlServerAdapter()},
-																							{"npgsqlconnection", new PostgresAdapter()},
-																							{"sqliteconnection", new SQLiteAdapter()}
-																						};
-		private static IEnumerable<PropertyInfo> ComputedPropertiesCache(Type type)
-		{
-			IEnumerable<PropertyInfo> pi;
-			if (ComputedProperties.TryGetValue(type.TypeHandle, out pi))
-			{
-				return pi;
-			}
-
-			var computedProperties = TypePropertiesCache(type).Where(p => p.GetCustomAttributes(true).Any(a => a is ComputedAttribute)).ToList();
-
-			ComputedProperties[type.TypeHandle] = computedProperties;
-			return computedProperties;
-		}
-        private static IEnumerable<PropertyInfo> KeyPropertiesCache(Type type)
+        public static bool IsWriteable(PropertyInfo pi)
         {
-
-            IEnumerable<PropertyInfo> pi;
-            if (KeyProperties.TryGetValue(type.TypeHandle,out pi))
+            object[] attributes = pi.GetCustomAttributes(typeof(WriteAttribute), false);
+            if (attributes.Length == 1)
             {
-                return pi;
+                WriteAttribute write = (WriteAttribute)attributes[0];
+                return write.Write;
             }
 
-            var allProperties = TypePropertiesCache(type);
-            var keyProperties = allProperties.Where(p => p.GetCustomAttributes(true).Any(a => a is KeyAttribute)).ToList();
-
-            if (keyProperties.Count == 0)
-            {
-                var idProp = allProperties.Where(p => p.Name.ToLower() == "id").FirstOrDefault();
-                if (idProp != null)
-                {
-                    keyProperties.Add(idProp);
-                }
-            }
-
-            KeyProperties[type.TypeHandle] = keyProperties;
-            return keyProperties;
-        }
-        private static IEnumerable<PropertyInfo> TypePropertiesCache(Type type)
-        {
-            IEnumerable<PropertyInfo> pis;
-            if (TypeProperties.TryGetValue(type.TypeHandle, out pis))
-            {
-                return pis;
-            }
-
-            var properties = type.GetProperties().Where(IsWriteable).ToArray();
-            TypeProperties[type.TypeHandle] = properties;
-            return properties;
-        }
-        private static IEnumerable<PropertyInfo> AutoIncrementPropertiesCache(Type type)
-        {
-            IEnumerable<PropertyInfo> pi;
-            if (AutoIncrementProperties.TryGetValue(type.TypeHandle, out pi))
-            {
-                return pi;
-            }
-
-            var autoIncrementProperties = TypePropertiesCache(type).Where(p => p.GetCustomAttributes(true).Any(a => a is AutoIncrementAttribute)).ToList();
-
-            AutoIncrementProperties[type.TypeHandle] = autoIncrementProperties;
-            return autoIncrementProperties;
+            return true;
         }
 
-		public static bool IsWriteable(PropertyInfo pi)
-		{
-			object[] attributes = pi.GetCustomAttributes(typeof (WriteAttribute), false);
-			if (attributes.Length == 1)
-			{
-				WriteAttribute write = (WriteAttribute) attributes[0];
-				return write.Write;
-			}
-			return true;
-		}
-
-    	/// <summary>
+        /// <summary>
         /// Returns a single entity by a single id from table "Ts". T must be of interface type. 
         /// Id must be marked with [Key] attribute.
         /// Created entity is tracked/intercepted for changes and used by the Update() extension. 
@@ -126,10 +62,18 @@ namespace Lu.Dapper.Extensions.Utils
             if (!GetQueries.TryGetValue(type.TypeHandle, out sql))
             { 
                 var keys = KeyPropertiesCache(type);
-                if (keys.Count() > 1)
+
+                var count = keys.Count();
+
+                if (count > 1)
+                {
                     throw new DataException("Get<T> only supports an entity with a single [Key] property");
-                if (keys.Count() == 0)
+                }
+
+                if (count == 0)
+                {
                     throw new DataException("Get<T> only supports en entity with a [Key] property");
+                }
 
                 var onlyKey = keys.First();
 
@@ -151,7 +95,9 @@ namespace Lu.Dapper.Extensions.Utils
                 var res = connection.Query(sql, dynParms).FirstOrDefault() as IDictionary<string, object>;
 
                 if (res == null)
+                {
                     return (T)((object)null);
+                }
 
                 obj = ProxyGenerator.GetInterfaceProxy<T>();
 
@@ -161,12 +107,14 @@ namespace Lu.Dapper.Extensions.Utils
                     property.SetValue(obj, val, null);
                 }
 
-                ((IProxy)obj).IsDirty = false;   //reset change tracking and return
+                // reset change tracking and return
+                ((IProxy)obj).IsDirty = false;
             }
             else
             {
                 obj = connection.Query<T>(sql, dynParms, transaction: transaction, commandTimeout: commandTimeout).FirstOrDefault();
             }
+
             return obj;
         }
 
@@ -186,10 +134,16 @@ namespace Lu.Dapper.Extensions.Utils
             if (!GetQueries.TryGetValue(type.TypeHandle, out sql))
             {
                 var keys = KeyPropertiesCache(type);
-                if (keys.Count() > 1)
+                var count = keys.Count();
+                if (count > 1)
+                {
                     throw new DataException("Get<T> only supports an entity with a single [Key] property");
-                if (keys.Count() == 0)
+                }
+
+                if (count == 0)
+                {
                     throw new DataException("Get<T> only supports en entity with a [Key] property");
+                }
 
                 var onlyKey = keys.First();
 
@@ -211,7 +165,9 @@ namespace Lu.Dapper.Extensions.Utils
                 var res = (await connection.QueryAsync<dynamic>(sql, dynParms).ConfigureAwait(false)).FirstOrDefault() as IDictionary<string, object>;
 
                 if (res == null)
+                {
                     return (T)((object)null);
+                }
 
                 obj = ProxyGenerator.GetInterfaceProxy<T>();
 
@@ -221,40 +177,15 @@ namespace Lu.Dapper.Extensions.Utils
                     property.SetValue(obj, val, null);
                 }
 
-                ((IProxy)obj).IsDirty = false;   //reset change tracking and return
+                // reset change tracking and return
+                ((IProxy)obj).IsDirty = false;
             }
             else
             {
                 obj = (await connection.QueryAsync<T>(sql, dynParms, transaction: transaction, commandTimeout: commandTimeout).ConfigureAwait(false)).FirstOrDefault();
             }
-            return obj;
-        }
 
-        private static string GetTableName(Type type)
-        {
-            string name;
-            if (!TypeTableName.TryGetValue(type.TypeHandle, out name))
-            {
-                if (type.Name.Contains("`"))
-                {
-                    name = type.Name.Substring(0, type.Name.IndexOf("`"));
-                }
-                else
-                {
-                    name = type.Name;
-                }
-                name = name + "s";
-                if (type.IsInterface && name.StartsWith("I"))
-                    name = name.Substring(1);
-              
-                //NOTE: This as dynamic trick should be able to handle both our own Table-attribute as well as the one in EntityFramework 
-                var tableattr = type.GetCustomAttributes(false).Where(attr => attr.GetType().Name == "TableAttribute").SingleOrDefault() as
-                    dynamic;
-                if (tableattr != null)
-                    name = tableattr.Name;
-                TypeTableName[type.TypeHandle] = name;
-            }
-            return name;
+            return obj;
         }
         
         /// <summary>
@@ -265,18 +196,17 @@ namespace Lu.Dapper.Extensions.Utils
         /// <returns>Identity of inserted entity</returns>
         public static long Insert<T>(this IDbConnection connection, T entityToInsert, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
-            
             var type = typeof(T);
 
             var name = GetTableName(type);
 
             var sbColumnList = new StringBuilder(null);
 
-			var allProperties = TypePropertiesCache(type);
+            var allProperties = TypePropertiesCache(type);
             var keyProperties = KeyPropertiesCache(type);
-			var computedProperties = ComputedPropertiesCache(type);
+            var computedProperties = ComputedPropertiesCache(type);
 
-			var allPropertiesExceptKeyAndComputed = allProperties.Except(computedProperties);
+            var allPropertiesExceptKeyAndComputed = allProperties.Except(computedProperties);
 
             var autoIncrementProperties = AutoIncrementPropertiesCache(type);
             var hasAutoIncrement = false;
@@ -284,30 +214,45 @@ namespace Lu.Dapper.Extensions.Utils
             {
                 hasAutoIncrement = keyProperties.Contains(autoIncrementProperties.First());
             }
+
             if (hasAutoIncrement)
             {
                 allPropertiesExceptKeyAndComputed = allProperties.Except(keyProperties.Union(computedProperties));
             }
+
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count(); i++)
             {
                 var property = allPropertiesExceptKeyAndComputed.ElementAt(i);
-				sbColumnList.AppendFormat("[{0}]", property.Name);
+                sbColumnList.AppendFormat("[{0}]", property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count() - 1)
-					sbColumnList.Append(", ");
+                {
+                    sbColumnList.Append(", ");
+                }
             }
 
-			var sbParameterList = new StringBuilder(null);
-			for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count(); i++)
+            var sbParameterList = new StringBuilder(null);
+            for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count(); i++)
             {
                 var property = allPropertiesExceptKeyAndComputed.ElementAt(i);
                 sbParameterList.AppendFormat("@{0}", property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count() - 1)
+                {
                     sbParameterList.Append(", ");
+                }
             }
 
-			ISqlAdapter adapter = GetFormatter(connection);
-			int id = adapter.Insert(connection, transaction, commandTimeout, name, sbColumnList.ToString(), sbParameterList.ToString(),  keyProperties, entityToInsert,hasAutoIncrement);
-			return id;
+            ISqlAdapter adapter = GetFormatter(connection);
+            int id = adapter.Insert(
+                connection,
+                transaction,
+                commandTimeout,
+                name,
+                sbColumnList.ToString(),
+                sbParameterList.ToString(),
+                keyProperties,
+                entityToInsert,
+                hasAutoIncrement);
+            return id;
         }
 
         /// <summary>
@@ -316,9 +261,12 @@ namespace Lu.Dapper.Extensions.Utils
         /// <param name="connection">Open SqlConnection</param>
         /// <param name="entityToInsert">Entity to insert</param>
         /// <returns>Identity of inserted entity</returns>
-        public static Task<int> InsertAsync<T>(this IDbConnection connection, T entityToInsert, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
+        public static Task<int> InsertAsync<T>(
+            this IDbConnection connection,
+            T entityToInsert,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null) where T : class
         {
-
             var type = typeof(T);
 
             var name = GetTableName(type);
@@ -335,16 +283,20 @@ namespace Lu.Dapper.Extensions.Utils
             {
                 hasAutoIncrement = keyProperties.Contains(autoIncrementProperties.First());
             }
-            if(hasAutoIncrement)
+
+            if (hasAutoIncrement)
             {
                 allPropertiesExceptKeyAndComputed = allProperties.Except(keyProperties.Union(computedProperties));
             }
+
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count(); i++)
             {
                 var property = allPropertiesExceptKeyAndComputed.ElementAt(i);
                 sbColumnList.AppendFormat("[{0}]", property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count() - 1)
+                {
                     sbColumnList.Append(", ");
+                }
             }
 
             var sbParameterList = new StringBuilder(null);
@@ -353,10 +305,22 @@ namespace Lu.Dapper.Extensions.Utils
                 var property = allPropertiesExceptKeyAndComputed.ElementAt(i);
                 sbParameterList.AppendFormat("@{0}", property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count() - 1)
+                {
                     sbParameterList.Append(", ");
+                }
             }
+
             ISqlAdapter adapter = GetFormatter(connection);
-            return adapter.InsertAsync(connection, transaction, commandTimeout, name, sbColumnList.ToString(), sbParameterList.ToString(), keyProperties, entityToInsert,hasAutoIncrement);
+            return adapter.InsertAsync(
+                connection,
+                transaction,
+                commandTimeout,
+                name,
+                sbColumnList.ToString(),
+                sbParameterList.ToString(),
+                keyProperties,
+                entityToInsert,
+                hasAutoIncrement);
         }
 
         /// <summary>
@@ -369,16 +333,18 @@ namespace Lu.Dapper.Extensions.Utils
         public static bool Update<T>(this IDbConnection connection, T entityToUpdate, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
             var proxy = entityToUpdate as IProxy;
-            if (proxy != null)
+            if (proxy != null && !proxy.IsDirty)
             {
-                if (!proxy.IsDirty) return false;
+                return false;
             }
 
             var type = typeof(T);
 
             var keyProperties = KeyPropertiesCache(type);
             if (!keyProperties.Any())
+            {
                 throw new ArgumentException("Entity must have at least one [Key] property");
+            }
 
             var name = GetTableName(type);
 
@@ -394,16 +360,22 @@ namespace Lu.Dapper.Extensions.Utils
                 var property = nonIdProps.ElementAt(i);
                 sb.AppendFormat("{0} = @{1}", property.Name, property.Name);
                 if (i < nonIdProps.Count() - 1)
+                {
                     sb.AppendFormat(", ");
+                }
             }
+
             sb.Append(" where ");
             for (var i = 0; i < keyProperties.Count(); i++)
             {
                 var property = keyProperties.ElementAt(i);
                 sb.AppendFormat("{0} = @{1}", property.Name, property.Name);
                 if (i < keyProperties.Count() - 1)
+                {
                     sb.AppendFormat(" and ");
+                }
             }
+
             var updated = connection.Execute(sb.ToString(), entityToUpdate, commandTimeout: commandTimeout, transaction: transaction);
             return updated > 0;
         }
@@ -418,16 +390,18 @@ namespace Lu.Dapper.Extensions.Utils
         public static async Task<bool> UpdateAsync<T>(this IDbConnection connection, T entityToUpdate, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
             var proxy = entityToUpdate as IProxy;
-            if (proxy != null)
+            if (proxy != null && !proxy.IsDirty)
             {
-                if (!proxy.IsDirty) return false;
+                return false;
             }
 
             var type = typeof(T);
 
             var keyProperties = KeyPropertiesCache(type);
             if (!keyProperties.Any())
+            {
                 throw new ArgumentException("Entity must have at least one [Key] property");
+            }
 
             var name = GetTableName(type);
 
@@ -443,16 +417,22 @@ namespace Lu.Dapper.Extensions.Utils
                 var property = nonIdProps.ElementAt(i);
                 sb.AppendFormat("{0} = @{1}", property.Name, property.Name);
                 if (i < nonIdProps.Count() - 1)
+                {
                     sb.AppendFormat(", ");
+                }
             }
+
             sb.Append(" where ");
             for (var i = 0; i < keyProperties.Count(); i++)
             {
                 var property = keyProperties.ElementAt(i);
                 sb.AppendFormat("{0} = @{1}", property.Name, property.Name);
                 if (i < keyProperties.Count() - 1)
+                {
                     sb.AppendFormat(" and ");
+                }
             }
+
             var updated = await connection.ExecuteAsync(sb.ToString(), entityToUpdate, commandTimeout: commandTimeout, transaction: transaction).ConfigureAwait(false);
             return updated > 0;
         }
@@ -466,14 +446,18 @@ namespace Lu.Dapper.Extensions.Utils
         /// <returns>true if deleted, false if not found</returns>
         public static bool Delete<T>(this IDbConnection connection, T entityToDelete, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
-			if (entityToDelete == null)
-				throw new ArgumentException("Cannot Delete null Object", "entityToDelete");
+            if (entityToDelete == null)
+            {
+                throw new ArgumentException("Cannot Delete null Object", "entityToDelete");
+            }
 
             var type = typeof(T);
 
-            var keyProperties = KeyPropertiesCache(type);
-            if (keyProperties.Count() == 0)
+            var keyProperties = KeyPropertiesCache(type).ToList();
+            if (keyProperties.Count == 0)
+            {
                 throw new ArgumentException("Entity must have at least one [Key] property");
+            }
 
             var name = GetTableName(type);
 
@@ -485,8 +469,11 @@ namespace Lu.Dapper.Extensions.Utils
                 var property = keyProperties.ElementAt(i);
                 sb.AppendFormat("{0} = @{1}", property.Name, property.Name);
                 if (i < keyProperties.Count() - 1)
+                {
                     sb.AppendFormat(" and ");
+                }
             }
+
             var deleted = connection.Execute(sb.ToString(), entityToDelete, transaction: transaction, commandTimeout: commandTimeout);
             return deleted > 0;
         }
@@ -501,30 +488,36 @@ namespace Lu.Dapper.Extensions.Utils
         public static async Task<bool> DeleteAsync<T>(this IDbConnection connection, T entityToDelete, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
             if (entityToDelete == null)
+            {
                 throw new ArgumentException("Cannot Delete null Object", "entityToDelete");
+            }
 
             var type = typeof(T);
 
-            var keyProperties = KeyPropertiesCache(type);
-            if (keyProperties.Count() == 0)
+            var keyProperties = KeyPropertiesCache(type).ToList();
+            if (keyProperties.Count == 0)
+            {
                 throw new ArgumentException("Entity must have at least one [Key] property");
+            }
 
             var name = GetTableName(type);
 
             var sb = new StringBuilder();
             sb.AppendFormat("delete from {0} where ", name);
 
-            for (var i = 0; i < keyProperties.Count(); i++)
+            for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties.ElementAt(i);
                 sb.AppendFormat("{0} = @{1}", property.Name, property.Name);
                 if (i < keyProperties.Count() - 1)
+                {
                     sb.AppendFormat(" and ");
+                }
             }
+
             var deleted = await connection.ExecuteAsync(sb.ToString(), entityToDelete, transaction: transaction, commandTimeout: commandTimeout).ConfigureAwait(false);
             return deleted > 0;
         }
-
 
         /// <summary>
         /// Delete all entities in the table related to the type T.
@@ -536,7 +529,7 @@ namespace Lu.Dapper.Extensions.Utils
         {
             var type = typeof(T);
             var name = GetTableName(type);
-            var statement = String.Format("delete from {0}", name);
+            var statement = string.Format("delete from {0}", name);
             var deleted = connection.Execute(statement, null, transaction: transaction, commandTimeout: commandTimeout);
             return deleted > 0;
         }
@@ -551,39 +544,124 @@ namespace Lu.Dapper.Extensions.Utils
         {
             var type = typeof(T);
             var name = GetTableName(type);
-            var statement = String.Format("delete from {0}", name);
+            var statement = string.Format("delete from {0}", name);
             var deleted = await connection.ExecuteAsync(statement, null, transaction: transaction, commandTimeout: commandTimeout).ConfigureAwait(false);
             return deleted > 0;
         }
 
+        public static ISqlAdapter GetFormatter(IDbConnection connection)
+        {
+            string name = connection.GetType().Name.ToLower();
+            if (!AdapterDictionary.ContainsKey(name))
+            {
+                return new SqlServerAdapter();
+            }
 
-		public static ISqlAdapter GetFormatter(IDbConnection connection)
-		{
-			string name = connection.GetType().Name.ToLower();
-			if (!AdapterDictionary.ContainsKey(name))
-				return new SqlServerAdapter();
-			return AdapterDictionary[name];
-		}
+            return AdapterDictionary[name];
+        }
 
-    	class ProxyGenerator
+        private static IEnumerable<PropertyInfo> ComputedPropertiesCache(Type type)
+        {
+            IEnumerable<PropertyInfo> pi;
+            if (ComputedProperties.TryGetValue(type.TypeHandle, out pi))
+            {
+                return pi;
+            }
+
+            var computedProperties = TypePropertiesCache(type).Where(p => p.GetCustomAttributes(true).Any(a => a is ComputedAttribute)).ToList();
+
+            ComputedProperties[type.TypeHandle] = computedProperties;
+            return computedProperties;
+        }
+
+        private static IEnumerable<PropertyInfo> KeyPropertiesCache(Type type)
+        {
+            IEnumerable<PropertyInfo> pi;
+            if (KeyProperties.TryGetValue(type.TypeHandle, out pi))
+            {
+                return pi;
+            }
+
+            var allProperties = TypePropertiesCache(type);
+            var keyProperties = allProperties.Where(p => p.GetCustomAttributes(true).Any(a => a is KeyAttribute)).ToList();
+
+            if (keyProperties.Count == 0)
+            {
+                var idProp = allProperties.FirstOrDefault(p => p.Name.ToLower() == "id");
+                if (idProp != null)
+                {
+                    keyProperties.Add(idProp);
+                }
+            }
+
+            KeyProperties[type.TypeHandle] = keyProperties;
+            return keyProperties;
+        }
+
+        private static IEnumerable<PropertyInfo> TypePropertiesCache(Type type)
+        {
+            IEnumerable<PropertyInfo> pis;
+            if (TypeProperties.TryGetValue(type.TypeHandle, out pis))
+            {
+                return pis;
+            }
+
+            var properties = type.GetProperties().Where(IsWriteable).ToArray();
+            TypeProperties[type.TypeHandle] = properties;
+            return properties;
+        }
+
+        private static IEnumerable<PropertyInfo> AutoIncrementPropertiesCache(Type type)
+        {
+            IEnumerable<PropertyInfo> pi;
+            if (AutoIncrementProperties.TryGetValue(type.TypeHandle, out pi))
+            {
+                return pi;
+            }
+
+            var autoIncrementProperties = TypePropertiesCache(type).Where(p => p.GetCustomAttributes(true).Any(a => a is AutoIncrementAttribute)).ToList();
+
+            AutoIncrementProperties[type.TypeHandle] = autoIncrementProperties;
+            return autoIncrementProperties;
+        }
+
+        private static string GetTableName(Type type)
+        {
+            string name;
+            if (!TypeTableName.TryGetValue(type.TypeHandle, out name))
+            {
+                name = type.Name.Contains("`") ? type.Name.Substring(0, type.Name.IndexOf("`", StringComparison.Ordinal)) : type.Name;
+                name = name + "s";
+                if (type.IsInterface && name.StartsWith("I"))
+                {
+                    name = name.Substring(1);
+                }
+
+                // NOTE: This as dynamic trick should be able to handle both our own Table-attribute as well as the one in EntityFramework 
+                var tableattr =
+                    type.GetCustomAttributes(false).SingleOrDefault(attr => attr.GetType().Name == "TableAttribute") as
+                    dynamic;
+                if (tableattr != null)
+                {
+                    name = tableattr.Name;
+                }
+
+                TypeTableName[type.TypeHandle] = name;
+            }
+
+            return name;
+        }
+
+        private static class ProxyGenerator
         {
             private static readonly Dictionary<Type, object> TypeCache = new Dictionary<Type, object>();
-
-            private static AssemblyBuilder GetAsmBuilder(string name)
-            {
-                var assemblyBuilder = Thread.GetDomain().DefineDynamicAssembly(new AssemblyName { Name = name },
-                    AssemblyBuilderAccess.Run);       //NOTE: to save, use RunAndSave
-
-                return assemblyBuilder;
-            }
 
             public static T GetClassProxy<T>()
             {
                 // A class proxy could be implemented if all properties are virtual
-                //  otherwise there is a pretty dangerous case where internal actions will not update dirty tracking
+                // otherwise there is a pretty dangerous case where internal actions will not update dirty tracking
                 throw new NotImplementedException();
             }
-
 
             public static T GetInterfaceProxy<T>()
             {
@@ -594,17 +672,20 @@ namespace Lu.Dapper.Extensions.Utils
                 {
                     return (T)k;
                 }
+
                 var assemblyBuilder = GetAsmBuilder(typeOfT.Name);
 
-                var moduleBuilder = assemblyBuilder.DefineDynamicModule("SqlMapperExtensions." + typeOfT.Name); //NOTE: to save, add "asdasd.dll" parameter
+                // NOTE: to save, add "asdasd.dll" parameter
+                var moduleBuilder = assemblyBuilder.DefineDynamicModule("SqlMapperExtensions." + typeOfT.Name);
 
                 var interfaceType = typeof(SqlMapperExtensions.IProxy);
-                var typeBuilder = moduleBuilder.DefineType(typeOfT.Name + "_" + Guid.NewGuid(),
+                var typeBuilder = moduleBuilder.DefineType(
+                    typeOfT.Name + "_" + Guid.NewGuid(),
                     TypeAttributes.Public | TypeAttributes.Class);
                 typeBuilder.AddInterfaceImplementation(typeOfT);
                 typeBuilder.AddInterfaceImplementation(interfaceType);
 
-                //create our _isDirty field, which implements IProxy
+                // create our _isDirty field, which implements IProxy
                 var setIsDirtyMethod = CreateIsDirtyProperty(typeBuilder);
 
                 // Generate a field for each property, which implements the T
@@ -616,7 +697,7 @@ namespace Lu.Dapper.Extensions.Utils
 
                 var generatedType = typeBuilder.CreateType();
 
-                //assemblyBuilder.Save(name + ".dll");  //NOTE: to save, uncomment
+                //// assemblyBuilder.Save(name + ".dll");  //NOTE: to save, uncomment
 
                 var generatedObject = Activator.CreateInstance(generatedType);
 
@@ -624,32 +705,46 @@ namespace Lu.Dapper.Extensions.Utils
                 return (T)generatedObject;
             }
 
+            private static AssemblyBuilder GetAsmBuilder(string name)
+            {
+                var assemblyBuilder = Thread.GetDomain()
+                    .DefineDynamicAssembly(new AssemblyName { Name = name }, AssemblyBuilderAccess.Run);
+
+                // NOTE: to save, use RunAndSave
+                return assemblyBuilder;
+            }
 
             private static MethodInfo CreateIsDirtyProperty(TypeBuilder typeBuilder)
             {
                 var propType = typeof(bool);
                 var field = typeBuilder.DefineField("_" + "IsDirty", propType, FieldAttributes.Private);
-                var property = typeBuilder.DefineProperty("IsDirty",
-                                               System.Reflection.PropertyAttributes.None,
-                                               propType,
-                                               new Type[] { propType });
+                var property = typeBuilder.DefineProperty(
+                    "IsDirty",
+                    System.Reflection.PropertyAttributes.None,
+                    propType,
+                    new Type[] { propType });
 
-                const MethodAttributes getSetAttr = MethodAttributes.Public | MethodAttributes.NewSlot | MethodAttributes.SpecialName |
-                                                    MethodAttributes.Final | MethodAttributes.Virtual | MethodAttributes.HideBySig;
+                const MethodAttributes GetSetAttr =
+                    MethodAttributes.Public | MethodAttributes.NewSlot | MethodAttributes.SpecialName
+                    | MethodAttributes.Final | MethodAttributes.Virtual | MethodAttributes.HideBySig;
 
                 // Define the "get" and "set" accessor methods
-                var currGetPropMthdBldr = typeBuilder.DefineMethod("get_" + "IsDirty",
-                                             getSetAttr,
-                                             propType,
-                                             Type.EmptyTypes);
+                var currGetPropMthdBldr = typeBuilder.DefineMethod(
+                    "get_" + "IsDirty",
+                    GetSetAttr,
+                    propType,
+                    Type.EmptyTypes);
+
                 var currGetIL = currGetPropMthdBldr.GetILGenerator();
                 currGetIL.Emit(OpCodes.Ldarg_0);
                 currGetIL.Emit(OpCodes.Ldfld, field);
                 currGetIL.Emit(OpCodes.Ret);
-                var currSetPropMthdBldr = typeBuilder.DefineMethod("set_" + "IsDirty",
-                                             getSetAttr,
-                                             null,
-                                             new Type[] { propType });
+                var currSetPropMthdBldr = typeBuilder.DefineMethod(
+                    "set_" + "IsDirty",
+                    GetSetAttr,
+                    null,
+                    new Type[] { propType });
+
                 var currSetIL = currSetPropMthdBldr.GetILGenerator();
                 currSetIL.Emit(OpCodes.Ldarg_0);
                 currSetIL.Emit(OpCodes.Ldarg_1);
@@ -668,33 +763,36 @@ namespace Lu.Dapper.Extensions.Utils
 
             private static void CreateProperty<T>(TypeBuilder typeBuilder, string propertyName, Type propType, MethodInfo setIsDirtyMethod, bool isIdentity)
             {
-                //Define the field and the property 
+                // Define the field and the property 
                 var field = typeBuilder.DefineField("_" + propertyName, propType, FieldAttributes.Private);
-                var property = typeBuilder.DefineProperty(propertyName,
-                                               System.Reflection.PropertyAttributes.None,
-                                               propType,
-                                               new Type[] { propType });
+                var property = typeBuilder.DefineProperty(
+                    propertyName,
+                    System.Reflection.PropertyAttributes.None,
+                    propType,
+                    new Type[] { propType });
 
-                const MethodAttributes getSetAttr = MethodAttributes.Public | MethodAttributes.Virtual |
-                                                    MethodAttributes.HideBySig;
+                const MethodAttributes GetSetAttr =
+                    MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig;
 
                 // Define the "get" and "set" accessor methods
-                var currGetPropMthdBldr = typeBuilder.DefineMethod("get_" + propertyName,
-                                             getSetAttr,
-                                             propType,
-                                             Type.EmptyTypes);
+                var currGetPropMthdBldr = typeBuilder.DefineMethod(
+                    "get_" + propertyName,
+                    GetSetAttr,
+                    propType,
+                    Type.EmptyTypes);
 
                 var currGetIL = currGetPropMthdBldr.GetILGenerator();
                 currGetIL.Emit(OpCodes.Ldarg_0);
                 currGetIL.Emit(OpCodes.Ldfld, field);
                 currGetIL.Emit(OpCodes.Ret);
 
-                var currSetPropMthdBldr = typeBuilder.DefineMethod("set_" + propertyName,
-                                             getSetAttr,
-                                             null,
-                                             new Type[] { propType });
+                var currSetPropMthdBldr = typeBuilder.DefineMethod(
+                    "set_" + propertyName,
+                    GetSetAttr,
+                    null,
+                    new Type[] { propType });
 
-                //store value in private field and set the isdirty flag
+                // store value in private field and set the isdirty flag
                 var currSetIL = currSetPropMthdBldr.GetILGenerator();
                 currSetIL.Emit(OpCodes.Ldarg_0);
                 currSetIL.Emit(OpCodes.Ldarg_1);
@@ -704,7 +802,7 @@ namespace Lu.Dapper.Extensions.Utils
                 currSetIL.Emit(OpCodes.Call, setIsDirtyMethod);
                 currSetIL.Emit(OpCodes.Ret);
 
-                //TODO: Should copy all attributes defined by the interface?
+                // TODO: Should copy all attributes defined by the interface?
                 if (isIdentity)
                 {
                     var keyAttribute = typeof(KeyAttribute);
@@ -720,210 +818,6 @@ namespace Lu.Dapper.Extensions.Utils
                 typeBuilder.DefineMethodOverride(currGetPropMthdBldr, getMethod);
                 typeBuilder.DefineMethodOverride(currSetPropMthdBldr, setMethod);
             }
-
         }
-    }
-
-    [AttributeUsage(AttributeTargets.Class)]
-    public class TableAttribute : Attribute
-    {
-        public TableAttribute(string tableName)
-        {
-            Name = tableName;
-        }
-        public string Name { get; private set; }
-    }
-
-    // do not want to depend on data annotations that is not in client profile
-    [AttributeUsage(AttributeTargets.Property)]
-    public class KeyAttribute : Attribute
-    {
-    }
-
-	[AttributeUsage(AttributeTargets.Property)]
-	public class WriteAttribute : Attribute
-	{
-		public WriteAttribute(bool write)
-        {
-			Write = write;
-        }
-        public bool Write { get; private set; }
-	}
-
-	[AttributeUsage(AttributeTargets.Property)]
-	public class ComputedAttribute : Attribute
-	{
-	}
-
-    [AttributeUsage(AttributeTargets.Property)]
-    public class AutoIncrementAttribute : Attribute
-    {
     }
 }
-
-public interface ISqlAdapter
-{
-    int Insert(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, String tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert, bool autoIncrement);
-    Task<int> InsertAsync(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, String tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert, bool autoIncrement);
-
-}
-
-public partial class SqlServerAdapter : ISqlAdapter
-{
-    public int Insert(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, String tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert, bool autoIncrement)
-	{
-		string cmd = String.Format("insert into {0} ({1}) values ({2})", tableName, columnList, parameterList);
-
-		connection.Execute(cmd, entityToInsert, transaction: transaction, commandTimeout: commandTimeout); 
-
-        if(autoIncrement)
-        {
-            //NOTE: would prefer to use IDENT_CURRENT('tablename') or IDENT_SCOPE but these are not available on SQLCE
-            var r = connection.Query("select @@IDENTITY id", transaction: transaction, commandTimeout: commandTimeout);
-            int id = (int)r.First().id;
-            if (keyProperties.Any())
-                keyProperties.First().SetValue(entityToInsert, id, null);
-            return id;
-        }
-        return 0;
-
-	}
-
-    public async Task<int> InsertAsync(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, String tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert, bool autoIncrement)
-    {
-        string cmd = String.Format("insert into {0} ({1}) values ({2})", tableName, columnList, parameterList);
-
-        await connection.ExecuteAsync(cmd, entityToInsert, transaction: transaction, commandTimeout: commandTimeout).ConfigureAwait(false);
-        if(autoIncrement)
-        {
-            var r = await connection.QueryAsync<dynamic>("select @@IDENTITY id", transaction: transaction, commandTimeout: commandTimeout).ConfigureAwait(false);
-            int id = (int)r.First().id;
-            if (keyProperties.Any())
-                keyProperties.First().SetValue(entityToInsert, id, null);
-            return id;
-        }
-        return 0;
-        //NOTE: would prefer to use IDENT_CURRENT('tablename') or IDENT_SCOPE but these are not available on SQLCE
-
-    }
-}
-
-public partial class PostgresAdapter : ISqlAdapter
-{
-    public int Insert(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, String tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert, bool autoIncrement)
-	{
-		StringBuilder sb = new StringBuilder();
-		sb.AppendFormat("insert into {0} ({1}) values ({2})", tableName, columnList, parameterList);
-
-		// If no primary key then safe to assume a join table with not too much data to return
-		if (!keyProperties.Any()||!autoIncrement)
-			sb.Append(" RETURNING *");
-		else
-		{
-			sb.Append(" RETURNING ");
-			bool first = true;
-			foreach (var property in keyProperties)
-			{
-				if (!first)
-					sb.Append(", ");
-				first = false;
-				sb.Append(property.Name);
-			}
-		}
-
-		var results = connection.Query(sb.ToString(), entityToInsert, transaction: transaction, commandTimeout: commandTimeout);
-
-		// Return the key by assinging the corresponding property in the object - by product is that it supports compound primary keys
-		int id = 0;
-        if(autoIncrement)
-        {
-            foreach (var p in keyProperties)
-            {
-                var value = ((IDictionary<string, object>)results.First())[p.Name.ToLower()];
-                p.SetValue(entityToInsert, value, null);
-                if (id == 0)
-                    id = Convert.ToInt32(value);
-            }
-        }
-
-		return id;
-	}
-
-    public async Task<int> InsertAsync(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, String tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert, bool autoIncrement)
-    {
-        StringBuilder sb = new StringBuilder();
-        sb.AppendFormat("insert into {0} ({1}) values ({2})", tableName, columnList, parameterList);
-
-        // If no primary key then safe to assume a join table with not too much data to return
-        if (!keyProperties.Any()||!autoIncrement)
-            sb.Append(" RETURNING *");
-        else
-        {
-            sb.Append(" RETURNING ");
-            bool first = true;
-            foreach (var property in keyProperties)
-            {
-                if (!first)
-                    sb.Append(", ");
-                first = false;
-                sb.Append(property.Name);
-            }
-        }
-
-        var results = await connection.QueryAsync<dynamic>(sb.ToString(), entityToInsert, transaction: transaction, commandTimeout: commandTimeout).ConfigureAwait(false);
-
-        // Return the key by assinging the corresponding property in the object - by product is that it supports compound primary keys
-        int id = 0;
-        if(autoIncrement)
-        {
-            foreach (var p in keyProperties)
-            {
-                var value = ((IDictionary<string, object>)results.First())[p.Name.ToLower()];
-                p.SetValue(entityToInsert, value, null);
-                if (id == 0)
-                    id = Convert.ToInt32(value);
-            }
-        }
-
-        return id;
-    }
-}
-
-public partial class SQLiteAdapter : ISqlAdapter
-{
-    public int Insert(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, String tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert, bool autoIncrement)
-	{
-		string cmd = String.Format("insert into {0} ({1}) values ({2})", tableName, columnList, parameterList);
-
-		connection.Execute(cmd, entityToInsert, transaction: transaction, commandTimeout: commandTimeout);
-        if(autoIncrement)
-        {
-            var r = connection.Query("select last_insert_rowid() id", transaction: transaction, commandTimeout: commandTimeout);
-            int id = (int)r.First().id;
-            if (keyProperties.Any())
-                keyProperties.First().SetValue(entityToInsert, id, null);
-            return id;
-        }
-        return 0;
-
-	}
-
-    public async Task<int> InsertAsync(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, String tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert, bool autoIncrement)
-    {
-        string cmd = String.Format("insert into {0} ({1}) values ({2})", tableName, columnList, parameterList);
-
-        await connection.ExecuteAsync(cmd, entityToInsert, transaction: transaction, commandTimeout: commandTimeout).ConfigureAwait(false);
-
-        if (autoIncrement)
-        {
-            var r = connection.Query("select last_insert_rowid() id", transaction: transaction, commandTimeout: commandTimeout);
-            int id = (int)r.First().id;
-            if (keyProperties.Any())
-                keyProperties.First().SetValue(entityToInsert, id, null);
-            return id;
-        }
-        return 0;
-    }
-}
-
-

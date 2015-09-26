@@ -1,40 +1,56 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Dynamic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Text;
-using System.Threading.Tasks;
-using Dapper;
-namespace Lu.Dapper.Extensions.Utils
+﻿namespace Lu.Dapper.Extensions.Utils
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Data;
+    using System.Dynamic;
+    using System.Linq;
+    using System.Linq.Expressions;
+    using System.Text;
+    using System.Threading.Tasks;
+
+    using global::Dapper;
+
     public static partial class SqlMapperExtensions
     {
-
-
-        public static IEnumerable<T> Find<T>(this IDbConnection connection, Expression<Func<T, bool>> expression, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static IEnumerable<T> Find<T>(
+            this IDbConnection connection,
+            Expression<Func<T, bool>> expression,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null)
         {
             var result = GetDynamicQuery(expression);
-            return connection.Query<T>(result.Sql, (object)result.Param, transaction);
-           
+            return connection.Query<T>(result.Sql, (object)result.Param, transaction, commandTimeout: commandTimeout);
         }
-        public static Task<IEnumerable<T>> FindAsync<T>(this IDbConnection connection, Expression<Func<T, bool>> expression, IDbTransaction transaction = null, int? commandTimeout = null)
+
+        public static Task<IEnumerable<T>> FindAsync<T>(
+            this IDbConnection connection,
+            Expression<Func<T, bool>> expression,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null)
         {
             var result = GetDynamicQuery(expression);
-            return connection.QueryAsync<T>(result.Sql, (object)result.Param, transaction);
+            return connection.QueryAsync<T>(result.Sql, (object)result.Param, transaction, commandTimeout);
         }
 
-        public static int Remove<T>(this IDbConnection connection, Expression<Func<T, bool>> expression, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static int Remove<T>(
+            this IDbConnection connection,
+            Expression<Func<T, bool>> expression,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null)
         {
             var result = GetDynamicRemove(expression);
-            return connection.Execute(result.Sql, (object)result.Param, transaction);
-
+            return connection.Execute(result.Sql, (object)result.Param, transaction, commandTimeout);
         }
-        public static Task<int> RemoveAsync<T>(this IDbConnection connection, Expression<Func<T, bool>> expression, IDbTransaction transaction = null, int? commandTimeout = null)
+
+        public static Task<int> RemoveAsync<T>(
+            this IDbConnection connection,
+            Expression<Func<T, bool>> expression,
+            IDbTransaction transaction = null,
+            int? commandTimeout = null)
         {
             var result = GetDynamicRemove(expression);
-            return connection.ExecuteAsync(result.Sql, (object)result.Param, transaction);
+            return connection.ExecuteAsync(result.Sql, (object)result.Param, transaction, commandTimeout);
         }
 
         public static string GetTableName<T>(this IDbConnection connection)
@@ -48,21 +64,19 @@ namespace Lu.Dapper.Extensions.Utils
             var headSql = "SELECT * FROM";
             return GetDynamicSql(expression, headSql);
         }
+
         private static LinqToSqlResult GetDynamicRemove<T>(Expression<Func<T, bool>> expression)
         {
             var headSql = "DELETE FROM";
             return GetDynamicSql(expression, headSql);
         }
 
-
-
-
-        private  static LinqToSqlResult GetDynamicSql<T>(Expression<Func<T, bool>> expression,string headSql)
+        private static LinqToSqlResult GetDynamicSql<T>(Expression<Func<T, bool>> expression, string headSql)
         {
             var tableName = GetTableName(typeof(T));
             var queryProperties = new List<QueryParameter>();
             var body = (BinaryExpression)expression.Body;
-            IDictionary<string, Object> expando = new ExpandoObject();
+            IDictionary<string, object> expando = new ExpandoObject();
             var builder = new StringBuilder();
 
             // walk the tree and build up a list of query parameter objects
@@ -70,7 +84,7 @@ namespace Lu.Dapper.Extensions.Utils
             WalkTree(body, ExpressionType.Default, ref queryProperties);
 
             // convert the query parms into a SQL string and dynamic property object
-            builder.Append(headSql+" ");
+            builder.Append(headSql + " ");
             builder.Append(tableName);
             builder.Append(" WHERE ");
 
@@ -78,29 +92,31 @@ namespace Lu.Dapper.Extensions.Utils
             {
                 QueryParameter item = queryProperties[i];
 
-                if (!string.IsNullOrEmpty(item.LinkingOperator) && i > 0)
-                {
-                    builder.Append(string.Format("{0} {1} {2} @{1} ", item.LinkingOperator, item.PropertyName,
-                                                 item.QueryOperator));
-                }
-                else
-                {
-                    builder.Append(string.Format("{0} {1} @{0} ", item.PropertyName, item.QueryOperator));
-                }
+                builder.Append(
+                    !string.IsNullOrEmpty(item.LinkingOperator) && i > 0
+                        ? string.Format(
+                            "{0} {1} {2} @{1} ",
+                            item.LinkingOperator,
+                            item.PropertyName,
+                            item.QueryOperator)
+                        : string.Format("{0} {1} @{0} ", item.PropertyName, item.QueryOperator));
 
                 expando[item.PropertyName] = item.PropertyValue;
             }
 
             return new LinqToSqlResult(builder.ToString().TrimEnd(), expando);
         }
+
         /// <summary>
         /// Walks the tree.
         /// </summary>
         /// <param name="body">The body.</param>
         /// <param name="linkingType">Type of the linking.</param>
         /// <param name="queryProperties">The query properties.</param>
-        private static void WalkTree(BinaryExpression body, ExpressionType linkingType,
-                                     ref List<QueryParameter> queryProperties)
+        private static void WalkTree(
+            BinaryExpression body,
+            ExpressionType linkingType,
+            ref List<QueryParameter> queryProperties)
         {
             if (body.NodeType != ExpressionType.AndAlso && body.NodeType != ExpressionType.OrElse)
             {
@@ -131,6 +147,7 @@ namespace Lu.Dapper.Extensions.Utils
 
                 return getter();
             }
+
             return propertyValue.Value;
         }
 
@@ -184,78 +201,5 @@ namespace Lu.Dapper.Extensions.Utils
                     throw new NotImplementedException();
             }
         }
-
-
-    }
-    /// <summary>
-    /// Class that models the data structure in coverting the expression tree into SQL and Params.
-    /// </summary>
-    internal class QueryParameter
-    {
-        public string LinkingOperator { get; set; }
-        public string PropertyName { get; set; }
-        public object PropertyValue { get; set; }
-        public string QueryOperator { get; set; }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="QueryParameter" /> class.
-        /// </summary>
-        /// <param name="linkingOperator">The linking operator.</param>
-        /// <param name="propertyName">Name of the property.</param>
-        /// <param name="propertyValue">The property value.</param>
-        /// <param name="queryOperator">The query operator.</param>
-        internal QueryParameter(string linkingOperator, string propertyName, object propertyValue, string queryOperator)
-        {
-            this.LinkingOperator = linkingOperator;
-            this.PropertyName = propertyName;
-            this.PropertyValue = propertyValue;
-            this.QueryOperator = queryOperator;
-        }
-    }
-    public class LinqToSqlResult
-    {
-        /// <summary>
-        /// The _result
-        /// </summary>
-        private readonly Tuple<string, dynamic> _result;
-
-        /// <summary>
-        /// Gets the SQL.
-        /// </summary>
-        /// <value>
-        /// The SQL.
-        /// </value>
-        public string Sql
-        {
-            get
-            {
-                return _result.Item1;
-            }
-        }
-
-        /// <summary>
-        /// Gets the param.
-        /// </summary>
-        /// <value>
-        /// The param.
-        /// </value>
-        public dynamic Param
-        {
-            get
-            {
-                return _result.Item2;
-            }
-        }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="QueryResult" /> class.
-        /// </summary>
-        /// <param name="sql">The SQL.</param>
-        /// <param name="param">The param.</param>
-        public LinqToSqlResult(string sql, dynamic param)
-        {
-            _result = new Tuple<string, dynamic>(sql, param);
-        }
-
     }
 }
