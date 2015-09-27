@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 
 namespace IdentitySample.Models
 {
+    using MySql.Data.MySqlClient;
+
     [Lu.Dapper.Extensions.Table("IdentityUsers")]
     // You can add profile data for the user by adding more properties to your ApplicationUser class, please visit http://go.microsoft.com/fwlink/?LinkID=317594 to learn more.
     public class ApplicationUser : IdentityUser
@@ -34,7 +36,7 @@ namespace IdentitySample.Models
         public static ApplicationDbContext Create()
         {
             var connString = System.Configuration.ConfigurationManager.ConnectionStrings["DefaultIdentityConnection"].ConnectionString;
-            var conn = new SqlConnection(connString);
+            var conn = new MySqlConnection(connString);
             return new ApplicationDbContext(conn);
         }
     }

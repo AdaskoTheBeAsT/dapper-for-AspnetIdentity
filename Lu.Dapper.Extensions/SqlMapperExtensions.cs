@@ -223,7 +223,7 @@
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count(); i++)
             {
                 var property = allPropertiesExceptKeyAndComputed.ElementAt(i);
-                sbColumnList.AppendFormat("[{0}]", property.Name);
+                sbColumnList.AppendFormat("{0}", property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count() - 1)
                 {
                     sbColumnList.Append(", ");
@@ -292,7 +292,7 @@
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count(); i++)
             {
                 var property = allPropertiesExceptKeyAndComputed.ElementAt(i);
-                sbColumnList.AppendFormat("[{0}]", property.Name);
+                sbColumnList.AppendFormat("{0}", property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count() - 1)
                 {
                     sbColumnList.Append(", ");
