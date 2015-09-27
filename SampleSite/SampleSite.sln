@@ -1,13 +1,20 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.31010.0
+VisualStudioVersion = 12.0.40629.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleSite", "SampleSite\SampleSite.csproj", "{44537CDD-E67D-4CC9-B560-A32D9F766BB0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lu.Dapper.Extensions", "..\Lu.Dapper.Extensions\Lu.Dapper.Extensions.csproj", "{23255E76-D762-4668-9D3F-AAE922A985D8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Lu.AspnetIdentity.Dapper", "..\Lu.AspnetIdentity.Dapper\Lu.AspnetIdentity.Dapper.csproj", "{452A6D78-A5B2-4D58-9382-48F3E33CAB36}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".nuget", ".nuget", "{893E8709-C972-485B-8676-1815871FFE14}"
+	ProjectSection(SolutionItems) = preProject
+		.nuget\NuGet.Config = .nuget\NuGet.Config
+		.nuget\NuGet.exe = .nuget\NuGet.exe
+		.nuget\NuGet.targets = .nuget\NuGet.targets
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
