@@ -8,7 +8,7 @@
 
     using global::Dapper;
 
-    using Lu.Dapper.Extensions.Utils;
+    using Utils;
 
     public class DapperRepository<T, TKey> : IRepository<T, TKey>, IDisposable
         where T : class
