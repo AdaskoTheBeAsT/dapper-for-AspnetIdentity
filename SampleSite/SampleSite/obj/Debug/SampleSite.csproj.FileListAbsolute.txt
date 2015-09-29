@@ -116,3 +116,4 @@ C:\github\dapper-for-AspnetIdentity\SampleSite\SampleSite\bin\Dapper.xml
 C:\github\dapper-for-AspnetIdentity\SampleSite\SampleSite\obj\Debug\SampleSite.csprojResolveAssemblyReference.cache
 C:\github\dapper-for-AspnetIdentity\SampleSite\SampleSite\obj\Debug\SampleSite.dll
 C:\github\dapper-for-AspnetIdentity\SampleSite\SampleSite\obj\Debug\SampleSite.pdb
+C:\github\dapper-for-AspnetIdentity\SampleSite\SampleSite\bin\MySql.Data.dll
