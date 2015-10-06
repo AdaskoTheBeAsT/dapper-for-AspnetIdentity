@@ -26,7 +26,8 @@
                 {
                     { "sqlconnection", new SqlServerAdapter() },
                     { "npgsqlconnection", new PostgresAdapter() },
-                    { "sqliteconnection", new SQLiteAdapter() }
+                    { "sqliteconnection", new SQLiteAdapter() },
+                    { "mysqlconnection", new MySqlAdapter() }
                 };
 
         public interface IProxy

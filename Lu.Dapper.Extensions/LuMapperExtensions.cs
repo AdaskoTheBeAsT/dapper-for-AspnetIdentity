@@ -136,7 +136,7 @@
 
         private static object GetValue(dynamic propertyValue)
         {
-            if (propertyValue.NodeType != System.Linq.Expressions.ExpressionType.Constant)
+            if (propertyValue.NodeType != ExpressionType.Constant)
             {
                 MemberExpression member = (MemberExpression)propertyValue;
                 var objectMember = Expression.Convert(member, typeof(object));
