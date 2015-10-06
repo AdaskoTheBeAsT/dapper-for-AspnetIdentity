@@ -25,6 +25,7 @@
             new Dictionary<string, ISqlAdapter>()
                 {
                     { "sqlconnection", new SqlServerAdapter() },
+                    { "sqlceconnection", new SqlCeAdapter() },
                     { "npgsqlconnection", new PostgresAdapter() },
                     { "sqliteconnection", new SQLiteAdapter() },
                     { "mysqlconnection", new MySqlAdapter() }

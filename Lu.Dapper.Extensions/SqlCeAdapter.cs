@@ -8,7 +8,7 @@
 
     using global::Dapper;
 
-    public partial class MySqlAdapter : ISqlAdapter
+    public class SqlCeAdapter : ISqlAdapter
     {
         public int Insert(
             IDbConnection connection,
@@ -27,12 +27,9 @@
 
             if (autoIncrement)
             {
-                // http://stackoverflow.com/questions/8517841/mysql-last-insert-id-connector-net
-                var id = (int)(long)connection.Query<ulong>(
-                        "SELECT CAST(LAST_INSERT_ID() AS UNSIGNED INTEGER)",
-                        transaction: transaction,
-                        commandTimeout: commandTimeout).FirstOrDefault();
-
+                // NOTE: would prefer to use IDENT_CURRENT('tablename') or IDENT_SCOPE but these are not available on SQLCE
+                var r = connection.Query("select @@IDENTITY id", transaction: transaction, commandTimeout: commandTimeout);
+                int id = (int)r.First().id;
                 var keyProperty = keyProperties.FirstOrDefault();
                 if (keyProperty != null)
                 {
@@ -63,14 +60,13 @@
                     .ConfigureAwait(false);
             if (autoIncrement)
             {
-                // http://stackoverflow.com/questions/8517841/mysql-last-insert-id-connector-net
                 var r =
                     await
-                    connection.QueryAsync<ulong>(
-                        "SELECT CAST(LAST_INSERT_ID() AS UNSIGNED INTEGER)",
+                    connection.QueryAsync<dynamic>(
+                        "select @@IDENTITY id",
                         transaction: transaction,
                         commandTimeout: commandTimeout).ConfigureAwait(false);
-                int id = (int)(long)r.FirstOrDefault();
+                int id = (int)r.First().id;
                 var keyProperty = keyProperties.FirstOrDefault();
                 if (keyProperty != null)
                 {
@@ -80,6 +76,7 @@
                 return id;
             }
 
+            // NOTE: would prefer to use IDENT_CURRENT('tablename') or IDENT_SCOPE but these are not available on SQLCE
             return 0;
         }
     }

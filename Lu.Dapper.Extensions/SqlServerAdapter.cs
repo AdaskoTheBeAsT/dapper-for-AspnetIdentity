@@ -28,11 +28,12 @@
             if (autoIncrement)
             {
                 // NOTE: would prefer to use IDENT_CURRENT('tablename') or IDENT_SCOPE but these are not available on SQLCE
-                var r = connection.Query("select @@IDENTITY id", transaction: transaction, commandTimeout: commandTimeout);
+                var r = connection.Query("select scope_identity() id", transaction: transaction, commandTimeout: commandTimeout);
                 int id = (int)r.First().id;
-                if (keyProperties.Any())
+                var keyProperty = keyProperties.FirstOrDefault();
+                if (keyProperty != null)
                 {
-                    keyProperties.First().SetValue(entityToInsert, id, null);
+                    keyProperty.SetValue(entityToInsert, id, null);
                 }
 
                 return id;
@@ -62,13 +63,14 @@
                 var r =
                     await
                     connection.QueryAsync<dynamic>(
-                        "select @@IDENTITY id",
+                        "select scope_identity() id",
                         transaction: transaction,
                         commandTimeout: commandTimeout).ConfigureAwait(false);
                 int id = (int)r.First().id;
-                if (keyProperties.Any())
+                var keyProperty = keyProperties.FirstOrDefault();
+                if (keyProperty != null)
                 {
-                    keyProperties.First().SetValue(entityToInsert, id, null);
+                    keyProperty.SetValue(entityToInsert, id, null);
                 }
 
                 return id;
