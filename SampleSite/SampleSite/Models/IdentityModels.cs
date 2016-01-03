@@ -9,7 +9,7 @@ namespace IdentitySample.Models
 {
     using MySql.Data.MySqlClient;
 
-    [Lu.Dapper.Extensions.Table("IdentityUsers")]
+    [Lu.Dapper.Extensions.DataAnnotations.Table("IdentityUsers")]
     // You can add profile data for the user by adding more properties to your ApplicationUser class, please visit http://go.microsoft.com/fwlink/?LinkID=317594 to learn more.
     public class ApplicationUser : IdentityUser
     {
@@ -21,12 +21,28 @@ namespace IdentitySample.Models
             return userIdentity;
         }
     }
-    [Lu.Dapper.Extensions.Table("IdentityRoles")]
+
+    [Lu.Dapper.Extensions.DataAnnotations.Table("IdentityRoles")]
     public class ApplicationRole : IdentityRole
     {
     }
 
-    public class ApplicationDbContext : DapperIdentityDbContext<ApplicationUser, ApplicationRole>
+    [Lu.Dapper.Extensions.DataAnnotations.Table("IdentityUserRoles")]
+    public class ApplicationUserRole : IdentityUserRole<string, string, string>
+    {
+    }
+
+    [Lu.Dapper.Extensions.DataAnnotations.Table("IdentityUserLogins")]
+    public class ApplicationUserLogin : IdentityUserLogin<string, string>
+    {
+    }
+
+    [Lu.Dapper.Extensions.DataAnnotations.Table("IdentityUserClaims")]
+    public class ApplicationUserClaim : IdentityUserClaim<string, string>
+    {
+    }
+
+    public class ApplicationDbContext : DapperIdentityDbContext<ApplicationUser, ApplicationRole, ApplicationUserRole, ApplicationUserLogin, ApplicationUserClaim>
     {
         public ApplicationDbContext(IDbConnection connection)
             : base(connection)

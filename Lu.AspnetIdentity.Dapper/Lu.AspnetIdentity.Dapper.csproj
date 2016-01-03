@@ -9,10 +9,11 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Lu.AspnetIdentity.Dapper</RootNamespace>
     <AssemblyName>Lu.AspnetIdentity.Dapper</AssemblyName>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
     <RestorePackages>true</RestorePackages>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -50,20 +51,23 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="DapperIdentityDbContext[TUser,TRole].cs" />
-    <Compile Include="IdentityDbContext[TUser,TRole,TKey,TRoleKey].cs" />
+    <Compile Include="DapperIdentityDbContext`5.cs" />
+    <Compile Include="IdentityDbContext`10.cs" />
     <Compile Include="IdentityRole.cs" />
-    <Compile Include="IdentityRole[TKey].cs" />
+    <Compile Include="IdentityRole`1.cs" />
     <Compile Include="IdentityUser.cs" />
-    <Compile Include="IdentityUser[TKey].cs" />
+    <Compile Include="IdentityUserClaim`1.cs" />
+    <Compile Include="IdentityUserClaim`2.cs" />
+    <Compile Include="IdentityUserLogin`1.cs" />
+    <Compile Include="IdentityUserLogin`2.cs" />
+    <Compile Include="IdentityUserRole`2.cs" />
+    <Compile Include="IdentityUserRole`3.cs" />
+    <Compile Include="IdentityUser`1.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="RoleStore[TUser,TRole,TKey,TRoleKey].cs" />
-    <Compile Include="RoleStore[TUser,TRole].cs" />
-    <Compile Include="UserClaim.cs" />
-    <Compile Include="UserLogin.cs" />
-    <Compile Include="UserRole.cs" />
-    <Compile Include="UserStore[TUser,TRole,TKey,TRoleKey].cs" />
-    <Compile Include="UserStore[TUser,TRole].cs" />
+    <Compile Include="RoleStore`10.cs" />
+    <Compile Include="RoleStore`5.cs" />
+    <Compile Include="UserStore`10.cs" />
+    <Compile Include="UserStore`5.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

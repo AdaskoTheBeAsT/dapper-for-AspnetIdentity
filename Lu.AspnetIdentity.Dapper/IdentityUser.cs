@@ -2,6 +2,9 @@
 {
     using System;
 
+    using Lu.Dapper.Extensions.DataAnnotations;
+
+    [Table("identityusers")]
     public class IdentityUser : IdentityUser<string>
     {
         public IdentityUser()

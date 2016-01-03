@@ -10,7 +10,7 @@
         private readonly Tuple<string, dynamic> _result;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="QueryResult" /> class.
+        /// Initializes a new instance of the <see cref="LinqToSqlResult" /> class.
         /// </summary>
         /// <param name="sql">The SQL.</param>
         /// <param name="param">The param.</param>

@@ -1,7 +1,7 @@
 ﻿namespace Lu.Dapper.Extensions
 {
     /// <summary>
-    /// Class that models the data structure in coverting the expression tree into SQL and Params.
+    /// Class that models the data structure in converting the expression tree into SQL and Params.
     /// </summary>
     internal class QueryParameter
     {

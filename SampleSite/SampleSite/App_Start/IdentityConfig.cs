@@ -24,7 +24,7 @@ namespace IdentitySample.Models
         public static ApplicationUserManager Create(IdentityFactoryOptions<ApplicationUserManager> options,
             IOwinContext context)
         {
-            var userStore = new UserStore<ApplicationUser, ApplicationRole>(context.Get<ApplicationDbContext>());
+            var userStore = new UserStore<ApplicationUser, ApplicationRole, ApplicationUserRole, ApplicationUserLogin, ApplicationUserClaim>(context.Get<ApplicationDbContext>());
             var manager = new ApplicationUserManager(userStore);
             // Configure validation logic for usernames
             manager.UserValidator = new UserValidator<ApplicationUser>(manager)
@@ -78,7 +78,7 @@ namespace IdentitySample.Models
 
         public static ApplicationRoleManager Create(IdentityFactoryOptions<ApplicationRoleManager> options, IOwinContext context)
         {
-            var roleStore = new RoleStore<ApplicationUser, ApplicationRole>(context.Get<ApplicationDbContext>());
+            var roleStore = new RoleStore<ApplicationUser, ApplicationRole, ApplicationUserRole, ApplicationUserLogin, ApplicationUserClaim>(context.Get<ApplicationDbContext>());
             return new ApplicationRoleManager(roleStore);
         }
     }
